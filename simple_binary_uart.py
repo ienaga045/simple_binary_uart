@@ -17,7 +17,6 @@ def uart_connect(combo):  #UART接続
     try :
         ser = serial.Serial(combo, '115200', timeout = 0.2, write_timeout = 0.2)
         connect_state = True
-        #self.serial_read()
     except :
         connect_state = False
 
@@ -27,6 +26,11 @@ def uart_close():   #UART切断
     global ser
     ser.close()
         
+def uart_read():    #UART受信
+    global buff
+    rx_length =ser.in_waiting
+    if rx_length > 0:
+        buff = int.from_bytes(ser.read(), byteorder='big') #シリアル受信バッファを取得
 
 def text_2_bytes(text_datas):  
     text_datas = text_odd_2_even(text_datas)
@@ -39,6 +43,7 @@ def text_odd_2_even(text_datas):
     return text_datas
 
 def main():
+    global buff
     sg.theme('Default1')
 
     layout = [
@@ -56,13 +61,19 @@ def main():
     toggle_com_button = True
     file_name = None
     while True:
-        event, values = window.read()
+        event, values = window.read(timeout = 10, timeout_key = 'read_10ms')
 
         #for i in range(1000):
         #    progress_bar.UpdateBar(i)
 
         if event in (None, 'Exit'): #Exitが押されたらループを抜けて終了
             break
+        elif event in 'read_10ms':
+            if toggle_com_button == False : #
+                uart_read()
+                if buff == 0xaa:
+                    info.update(value=str('Get Ack'))
+
 
         if event == 'com_button':
             if toggle_com_button == True:
