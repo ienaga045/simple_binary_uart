@@ -28,9 +28,12 @@ def uart_close():   #UART切断
         
 def uart_read():    #UART受信
     global buff
+    global ser
     rx_length =ser.in_waiting
     if rx_length > 0:
         buff = int.from_bytes(ser.read(), byteorder='big') #シリアル受信バッファを取得
+    else :
+        buff = None
 
 def text_2_bytes(text_datas):  
     text_datas = text_odd_2_even(text_datas)
@@ -43,6 +46,7 @@ def text_odd_2_even(text_datas):
     return text_datas
 
 def main():
+    global ser
     global buff
     sg.theme('Default1')
 
@@ -68,14 +72,15 @@ def main():
 
         if event in (None, 'Exit'): #Exitが押されたらループを抜けて終了
             break
-        elif event in 'read_10ms':
+
+        if event == 'read_10ms':
             if toggle_com_button == False : #
                 uart_read()
-                if buff == 0xaa:
-                    info.update(value=str('Get Ack'))
-
-
-        if event == 'com_button':
+                if buff != None:
+                    print(hex(buff))
+                    if buff == 0xaa:
+                        info.update(value=str('Get Ack'))
+        elif event == 'com_button':   #COM openボタン押下時処理
             if toggle_com_button == True:
                 uart_connection = uart_connect(values['com_combo'])
                 if uart_connection == True:
@@ -90,8 +95,19 @@ def main():
                 window['com_button'].update(('ComOpen'))
                 info.update(value=f"COM close")
 
-        elif event == 'open_file':
+        elif event == 'open_file':  
             file_name = values['open_file']
+        
+        elif event == 'Write' :
+            header = 'a5'
+            datas = '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f'
+            tx_crc = crc_checker.crc16_ccitt(text_2_bytes(header + datas))
+            tx_crc = hex(tx_crc)
+            tx_crc = tx_crc[2:].zfill(4)
+            tx_datas = header + datas + tx_crc
+            print('heder + datas:' + header + datas)
+            print('with crc:' + tx_datas)
+            ser.write(text_2_bytes(tx_datas))
 
     window.close()
 
