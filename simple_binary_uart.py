@@ -3,6 +3,7 @@ import serial
 from serial.tools import list_ports
 import sys
 import binascii
+import time
 #以下自作関数群
 sys.path.append('./')
 import crc_checker 
@@ -40,8 +41,7 @@ def uart_read():    #UART受信
 def wait_ack(): #ACK待ち、正常：0xaa、異常：0x0f
     while True:
         uart_read()
-        if buff != None:
-            print(hex(buff))
+
         if (buff == 0xaa) or (buff == 0x0f):
             break
     return buff
@@ -89,8 +89,6 @@ def main():
         if event == 'read_10ms':
             if toggle_com_button == False : #
                 uart_read()
-                if buff != None:
-                    print(hex(buff))
 
         elif event == 'com_button':   #COM openボタン押下時処理
             if toggle_com_button == True:
@@ -136,10 +134,15 @@ def main():
                     res = wait_ack()
                     if res == 0xaa:
                         info.update(value=str('Get Ack'))
+                        time.sleep(0.05)
                     elif res == 0x0f:
                         info.update(value=str('Repeat Req'))
+                        time.sleep(0.1)
+                        i -= 1
 
                     progress_bar.UpdateBar(i)   #プログレスバーに反映
+                    if i == 172:
+                        info.update(value=str('Transport finish'))
 
     window.close()
 
