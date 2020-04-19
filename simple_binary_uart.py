@@ -22,7 +22,6 @@ def uart_connect(combo):  #UART接続
         connect_state = True
     except :
         connect_state = False
-
     return connect_state
 
 def uart_close():   #UART切断
@@ -62,7 +61,6 @@ def main():
     global file_name
     global read_file
     sg.theme('Default1')
-
     layout = [
         [sg.Combo((devices), size=(6, 1), key='com_combo'),sg.Button('ComOpen', key='com_button')], 
         [sg.InputText('ファイルを選択', enable_events=True,), sg.FilesBrowse('Select', key='open_file', file_types=(('txt ファイル', '*.txt'),))],
@@ -70,28 +68,28 @@ def main():
         [sg.Text(key='info', size=(48, 1)),sg.Exit()]
     ]
     window = sg.Window('Simple Binary Uart Transport', layout, location = (400,200), finalize = True)
-
     progress_bar = window['progressbar']
     info = window["info"]
     info.update(value=f"COM closed")
-
+    window['Write'].update(disabled=False)   
     toggle_com_button = True
-
+    
     while True:
         event, values = window.read(timeout = 10, timeout_key = 'read_10ms')
-
-        #for i in range(1000):
-        #    progress_bar.UpdateBar(i)
-
         if event in (None, 'Exit'): #Exitが押されたらループを抜けて終了
             break
-
         if event == 'read_10ms':
+            file_name = values['open_file']
             if toggle_com_button == False : #
                 uart_read()
+            if (toggle_com_button == False) and (len(file_name) > 0):   #UARTがオープン状態かつファイル名が有効の時にUARTへの出力を許可
+                window['Write'].update(disabled=False)   
+            else:
+                window['Write'].update(disabled=True)   
 
         elif event == 'com_button':   #COM openボタン押下時処理
             if toggle_com_button == True:
+
                 uart_connection = uart_connect(values['com_combo'])
                 if uart_connection == True:
                     toggle_com_button = not toggle_com_button
@@ -129,28 +127,23 @@ def main():
                     tx_crc = hex(tx_crc)
                     tx_crc = tx_crc[2:].zfill(4)
                     tx_datas = header_and_datas + tx_crc    #ヘッダ・データ・CRCを結合
-                    print('tx_data:' + tx_datas)
                     ser.write(text_2_bytes(tx_datas))   #データ転送
                     res = wait_ack()
                     if res == 0xaa:
                         info.update(value=str('Get Ack'))
-                        time.sleep(0.05)
+                        #time.sleep(0.05)
                     elif res == 0x0f:
                         info.update(value=str('Repeat Req'))
                         time.sleep(0.1)
                         i -= 1
-
                     progress_bar.UpdateBar(i)   #プログレスバーに反映
                     if i == 172:
                         info.update(value=str('Transport finish'))
-
     window.close()
 
 if __name__ == '__main__':
     ser = 0
     buff = 0
- 
     ports = list_ports.comports()    # ポートデータを取得
     devices = [info.device for info in ports]
-
     main()
