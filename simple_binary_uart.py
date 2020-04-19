@@ -10,6 +10,8 @@ import crc_checker
 devices = None
 buff = None
 ser = None
+file_name = None
+read_file = None
 
 def uart_connect(combo):  #UART接続
     global ser
@@ -35,6 +37,15 @@ def uart_read():    #UART受信
     else :
         buff = None
 
+def wait_ack(): #ACK待ち、正常：0xaa、異常：0x0f
+    while True:
+        uart_read()
+        if buff != None:
+            print(hex(buff))
+        if (buff == 0xaa) or (buff == 0x0f):
+            break
+    return buff
+
 def text_2_bytes(text_datas):  
     text_datas = text_odd_2_even(text_datas)
     text_datas = text_datas.encode('utf-8')
@@ -48,12 +59,14 @@ def text_odd_2_even(text_datas):
 def main():
     global ser
     global buff
+    global file_name
+    global read_file
     sg.theme('Default1')
 
     layout = [
         [sg.Combo((devices), size=(6, 1), key='com_combo'),sg.Button('ComOpen', key='com_button')], 
         [sg.InputText('ファイルを選択', enable_events=True,), sg.FilesBrowse('Select', key='open_file', file_types=(('txt ファイル', '*.txt'),))],
-        [sg.ProgressBar(1000, orientation='h', size=(35, 25), key='progressbar'), sg.Button('Write')],
+        [sg.ProgressBar(172, orientation='h', size=(35, 25), key='progressbar'), sg.Button('Write')],
         [sg.Text(key='info', size=(48, 1)),sg.Exit()]
     ]
     window = sg.Window('Simple Binary Uart Transport', layout, location = (400,200), finalize = True)
@@ -63,7 +76,7 @@ def main():
     info.update(value=f"COM closed")
 
     toggle_com_button = True
-    file_name = None
+
     while True:
         event, values = window.read(timeout = 10, timeout_key = 'read_10ms')
 
@@ -78,8 +91,7 @@ def main():
                 uart_read()
                 if buff != None:
                     print(hex(buff))
-                    if buff == 0xaa:
-                        info.update(value=str('Get Ack'))
+
         elif event == 'com_button':   #COM openボタン押下時処理
             if toggle_com_button == True:
                 uart_connection = uart_connect(values['com_combo'])
@@ -95,19 +107,39 @@ def main():
                 window['com_button'].update(('ComOpen'))
                 info.update(value=f"COM close")
 
-        elif event == 'open_file':  
-            file_name = values['open_file']
-        
         elif event == 'Write' :
-            header = 'a5'
-            datas = '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f'
-            tx_crc = crc_checker.crc16_ccitt(text_2_bytes(header + datas))
-            tx_crc = hex(tx_crc)
-            tx_crc = tx_crc[2:].zfill(4)
-            tx_datas = header + datas + tx_crc
-            print('heder + datas:' + header + datas)
-            print('with crc:' + tx_datas)
-            ser.write(text_2_bytes(tx_datas))
+            file_name = values['open_file']
+            with open(file_name) as read_file:  #ファイル読み込み
+                read_data = read_file.read()
+                data_list = read_data.split(',')    #カンマ削除
+                j = 0
+                length = int((len(data_list)-1)/32) +1  #32byte区切りでの長さを格納
+                data32 =[0] *length #リスト確保
+                for i in range(len(data_list)): #'0x'と改行コードを削除
+                    data_list[i] = data_list[i].replace('\n','')[2:]
+
+                for i in range(0, len(data_list), 32):  #リストを32byte単位で結合する処理
+                    data32[j] = ''.join(data_list[i:32+i])
+                    if i == ((32*(int)(len(data_list)/32))):
+                        data32[j] = data32[j] + '00'*24 #余った部分を0埋め　※画像サイズが異なる場合はココを修正する必要有り
+                    j += 1
+
+                for i in range((int)(len(data_list)/32+1)): #データ転送処理
+                    header = 'a5'
+                    header_and_datas = header + data32[i]   #ヘッダ付与
+                    tx_crc = crc_checker.crc16_ccitt(text_2_bytes(header_and_datas))    #ヘッダ込みのデータのCRCを取得
+                    tx_crc = hex(tx_crc)
+                    tx_crc = tx_crc[2:].zfill(4)
+                    tx_datas = header_and_datas + tx_crc    #ヘッダ・データ・CRCを結合
+                    print('tx_data:' + tx_datas)
+                    ser.write(text_2_bytes(tx_datas))   #データ転送
+                    res = wait_ack()
+                    if res == 0xaa:
+                        info.update(value=str('Get Ack'))
+                    elif res == 0x0f:
+                        info.update(value=str('Repeat Req'))
+
+                    progress_bar.UpdateBar(i)   #プログレスバーに反映
 
     window.close()
 
